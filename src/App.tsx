@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import type { BusinessCardData, CardTheme } from './types';
+import type { BusinessCardData, CardTheme, CustomCardDesign } from './types';
 import { cardThemes } from './data/themes';
 import BusinessCard from './components/BusinessCard';
 import CardForm from './components/CardForm';
 import ExportButtons from './components/ExportButtons';
-import { Save, Share2 } from 'lucide-react';
+import CustomDesignEditor from './components/CustomDesignEditor';
+import { Save, Share2, Palette } from 'lucide-react';
 
 function App() {
   const [cardData, setCardData] = useState<BusinessCardData>({
@@ -22,6 +23,8 @@ function App() {
 
   const [selectedTheme, setSelectedTheme] = useState<CardTheme>(cardThemes[0]);
   const [savedCards, setSavedCards] = useState<Array<{ id: string; data: BusinessCardData; theme: CardTheme; timestamp: number }>>([]);
+  const [customDesign, setCustomDesign] = useState<CustomCardDesign | null>(null);
+  const [showCustomEditor, setShowCustomEditor] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Load saved cards from localStorage on mount
@@ -68,37 +71,153 @@ function App() {
   };
 
   const generateShareableLink = () => {
-    const cardDataString = btoa(JSON.stringify({ data: cardData, theme: selectedTheme }));
-    const shareableUrl = `${window.location.origin}${window.location.pathname}?card=${cardDataString}`;
-    
-    navigator.clipboard.writeText(shareableUrl).then(() => {
-      alert('Shareable link copied to clipboard!');
-    }).catch(() => {
-      // Fallback for browsers that don't support clipboard API
+    try {
+      // Generate a unique ID for this card
+      const cardId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      
+      // Store the card data in localStorage with the unique ID
+      const cardDataToStore = {
+        data: cardData,
+        theme: selectedTheme,
+        timestamp: Date.now()
+      };
+      
+      localStorage.setItem(`kardly-shared-${cardId}`, JSON.stringify(cardDataToStore));
+      
+      // Create a shorter URL with just the ID
+      const shareableUrl = `${window.location.origin}${window.location.pathname}?shared=${cardId}`;
+      
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(shareableUrl).then(() => {
+          alert('Shareable link copied to clipboard!');
+        }).catch((error) => {
+          console.error('Clipboard API failed:', error);
+          fallbackCopyToClipboard(shareableUrl);
+        });
+      } else {
+        fallbackCopyToClipboard(shareableUrl);
+      }
+    } catch (error) {
+      console.error('Error generating shareable link:', error);
+      alert('Error generating shareable link. Please try again.');
+    }
+  };
+
+  const fallbackCopyToClipboard = (text: string) => {
+    try {
       const textArea = document.createElement('textarea');
-      textArea.value = shareableUrl;
+      textArea.value = text;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
       document.body.appendChild(textArea);
+      textArea.focus();
       textArea.select();
-      document.execCommand('copy');
+      const successful = document.execCommand('copy');
       document.body.removeChild(textArea);
-      alert('Shareable link copied to clipboard!');
-    });
+      
+      if (successful) {
+        alert('Shareable link copied to clipboard!');
+      } else {
+        alert('Failed to copy link. Please copy manually: ' + text);
+      }
+    } catch (error) {
+      console.error('Fallback copy failed:', error);
+      alert('Failed to copy link. Please copy manually: ' + text);
+    }
   };
 
   // Load card from URL parameters on mount
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const cardParam = urlParams.get('card');
-    if (cardParam) {
+    const sharedParam = urlParams.get('shared');
+    
+    if (sharedParam) {
+      console.log('Loading shared card from localStorage');
       try {
-        const decoded = JSON.parse(atob(cardParam));
-        setCardData(decoded.data);
-        setSelectedTheme(decoded.theme);
+        const storedData = localStorage.getItem(`kardly-shared-${sharedParam}`);
+        if (storedData) {
+          const parsed = JSON.parse(storedData);
+          console.log('Loaded shared card data:', parsed);
+          
+          setCardData(parsed.data);
+          setSelectedTheme(parsed.theme);
+        } else {
+          console.error('Shared card not found in localStorage');
+          alert('Shared card not found. The link may be expired or invalid.');
+        }
+      } catch (error) {
+        console.error('Error loading shared card from localStorage:', error);
+        alert('Error loading shared card. The link may be invalid or corrupted.');
+      }
+    } else if (cardParam) {
+      // Handle old URL format for backward compatibility
+      console.log('Loading shared card from URL parameter (old format)');
+      try {
+        const decodedParam = decodeURIComponent(cardParam);
+        const decoded = JSON.parse(atob(decodedParam));
+        console.log('Decoded card data:', decoded);
+        
+        // Handle both old and new compressed format
+        if (decoded.data && decoded.theme) {
+          // Old format
+          console.log('Using old format');
+          setCardData(decoded.data);
+          setSelectedTheme(decoded.theme);
+        } else {
+          // New compressed format
+          console.log('Using new compressed format');
+          const expandedData = {
+            name: decoded.n || '',
+            title: decoded.t || '',
+            company: decoded.c || '',
+            phone: decoded.p || '',
+            email: decoded.e || '',
+            website: decoded.w || '',
+            linkedin: decoded.l || '',
+            address: decoded.a || '',
+            logo: decoded.logo || '',
+            profileImage: decoded.img || '',
+          };
+          
+          console.log('Expanded data:', expandedData);
+          setCardData(expandedData);
+          
+          // Find the theme by ID
+          const theme = cardThemes.find(t => t.id === decoded.th);
+          if (theme) {
+            console.log('Found theme:', theme.name);
+            setSelectedTheme(theme);
+          } else {
+            console.warn('Theme not found:', decoded.th);
+            // Fallback to first theme if the specified theme is not found
+            setSelectedTheme(cardThemes[0]);
+          }
+        }
       } catch (error) {
         console.error('Error loading card from URL:', error);
+        alert('Error loading shared card. The link may be invalid or corrupted.');
       }
     }
-  }, []);
+  }, [cardThemes]);
+
+  // Check if this is a shared card view
+  const isSharedView = window.location.search.includes('shared=') || window.location.search.includes('card=');
+
+  if (isSharedView) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+                            <BusinessCard
+                    data={cardData}
+                    theme={selectedTheme}
+                    customDesign={customDesign || undefined}
+                  />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -113,6 +232,13 @@ function App() {
               <h1 className="text-2xl font-bold text-gray-900">Kardly</h1>
             </div>
             <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowCustomEditor(true)}
+                className="btn-secondary flex items-center space-x-2"
+              >
+                <Palette size={16} />
+                <span>Custom Design</span>
+              </button>
               <button
                 onClick={saveCurrentCard}
                 className="btn-secondary flex items-center space-x-2"
@@ -206,28 +332,19 @@ function App() {
                 />
               </div>
             </div>
-
-            {/* Theme Info */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Current Theme</h3>
-              <div className="space-y-2">
-                <div>
-                  <span className="font-medium">Name:</span> {selectedTheme.name}
-                </div>
-                <div>
-                  <span className="font-medium">Profession:</span> {selectedTheme.profession}
-                </div>
-                <div>
-                  <span className="font-medium">Layout:</span> {selectedTheme.layout}
-                </div>
-                <div>
-                  <span className="font-medium">Description:</span> {selectedTheme.description}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </div>
+
+      {/* Custom Design Editor */}
+      {showCustomEditor && (
+        <CustomDesignEditor
+          cardData={cardData}
+          theme={selectedTheme}
+          onDesignChange={setCustomDesign}
+          onClose={() => setShowCustomEditor(false)}
+        />
+      )}
     </div>
   );
 }

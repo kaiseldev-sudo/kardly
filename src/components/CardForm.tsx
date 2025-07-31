@@ -46,23 +46,37 @@ const CardForm: React.FC<CardFormProps> = ({
       
       {/* Theme Selection */}
       <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 mb-3">
           Design Theme
         </label>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {themes.map((theme) => (
             <button
               key={theme.id}
               onClick={() => onThemeChange(theme)}
-              className={`p-3 rounded-lg border-2 transition-all ${
+              className={`p-3 rounded-lg border-2 transition-all hover:shadow-md ${
                 selectedTheme.id === theme.id
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-200 hover:border-gray-300'
+                  ? 'border-primary-600 bg-primary-50 ring-2 ring-primary-200'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
               }`}
             >
               <div className="text-left">
-                <div className="font-medium text-sm">{theme.name}</div>
-                <div className="text-xs text-gray-500">{theme.profession}</div>
+                <div className="font-semibold text-sm mb-1">{theme.name}</div>
+                <div className="text-xs text-gray-500 mb-2">{theme.profession}</div>
+                <div className="flex space-x-1">
+                  <div 
+                    className="w-3 h-3 rounded-full border border-gray-300"
+                    style={{ backgroundColor: theme.colors.primary }}
+                  ></div>
+                  <div 
+                    className="w-3 h-3 rounded-full border border-gray-300"
+                    style={{ backgroundColor: theme.colors.secondary }}
+                  ></div>
+                  <div 
+                    className="w-3 h-3 rounded-full border border-gray-300"
+                    style={{ backgroundColor: theme.colors.accent }}
+                  ></div>
+                </div>
               </div>
             </button>
           ))}
